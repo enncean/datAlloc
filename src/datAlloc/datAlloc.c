@@ -11,8 +11,8 @@
 // 符号無し32bit(管理領域のパラメータ用)
 typedef unsigned int U32;
 
-static U32 readU32 (const unsigned char* bufferAddr, unsigned int offset);
-static void writeU32 (unsigned char* bufferAddr, unsigned int offset, U32 data);
+static U32 readFromHeapU32 (unsigned int offset);
+static void writeToHeapU32 (unsigned int offset, U32 data);
 
 #define DA_HEADER_SIZE			8	// 管理領域のサイズ ( NxtHeader(4) + DataSize(4) = 8Byte )
 #define DA_HEADER_OFFSET_SIZE	4	// 管理領域の先頭からサイズ情報までのオフセット
@@ -62,15 +62,15 @@ extern void getHeapReport (HeapDataReport* report)
 		report->heapBuffer = daHeap;
 		
 		// 最初の要素の場所を取得
-		readingOffset = readU32(daHeap, readingOffset);
+		readingOffset = readFromHeapU32(readingOffset);
 		
 		while (readingOffset != 0x00000000U)
 		{
 			// 現在指しているヘッダが管理している情報の取得
 			report->usedCount++;
-			report->usedSize += DA_HEADER_SIZE + readU32(daHeap, readingOffset + DA_HEADER_OFFSET_SIZE);
+			report->usedSize += DA_HEADER_SIZE + readFromHeapU32(readingOffset + DA_HEADER_OFFSET_SIZE);
 			// 次のヘッダ位置取得
-			readingOffset = readU32(daHeap, readingOffset);
+			readingOffset = readFromHeapU32(readingOffset);
 		}
 	}
 }
@@ -94,14 +94,14 @@ extern void* dataMalloc (size_t size)
 	}
 	
 	// ==== 次に使用する領域を探す ====
-	readingOffset = readU32(daHeap, readingOffset);
+	readingOffset = readFromHeapU32(readingOffset);
 	hasData = (readingOffset != 0x00000000U);
 	while (readingOffset != 0x00000000U)
 	{
 		// 次の領域のヘッダ位置取得
-		U32 nextHeaderIndex = readU32(daHeap, readingOffset);
+		U32 nextHeaderIndex = readFromHeapU32(readingOffset);
 		// この領域で確保しているサイズを取得
-		U32 allocatedSize = readU32(daHeap, readingOffset + DA_HEADER_OFFSET_SIZE);
+		U32 allocatedSize = readFromHeapU32(readingOffset + DA_HEADER_OFFSET_SIZE);
 		// この領域と次の領域(無いならdaHeap末尾)までの間にある空き領域の算出
 		U32 emptySizeForNext =
 				((nextHeaderIndex == 0) ? DA_HEAP_SIZE : nextHeaderIndex) -
@@ -126,12 +126,12 @@ extern void* dataMalloc (size_t size)
 	if (candidateIndex != 0x00000000U)
 	{
 		// 領域確保/次の領域のIndex
-		writeU32(daHeap, candidateIndex, readU32(daHeap, candidatePrevIndex));
+		writeToHeapU32(candidateIndex, readFromHeapU32(candidatePrevIndex));
 		// 領域確保/この領域で確保しているサイズ
-		writeU32(daHeap, candidateIndex + DA_HEADER_OFFSET_SIZE, size);
+		writeToHeapU32(candidateIndex + DA_HEADER_OFFSET_SIZE, size);
 		
 		// 1つ前の領域が指す、次の領域のIndexを更新
-		writeU32(daHeap, candidatePrevIndex, candidateIndex);
+		writeToHeapU32(candidatePrevIndex, candidateIndex);
 		
 		return &daHeap[candidateIndex + DA_HEADER_SIZE];
 	}
@@ -144,7 +144,7 @@ extern void dataFree (void* ptr)
 	if (ptr != NULL)
 	{
 		// 次に読み込むヘッダ位置
-		U32 readingOffset = readU32(daHeap, 0x00000000U);
+		U32 readingOffset = readFromHeapU32(0x00000000U);
 		// readingOffsetの1つ前の領域
 		U32 prevReadOffset = 0x00000000U;
 		
@@ -153,12 +153,12 @@ extern void dataFree (void* ptr)
 			if (ptr == &daHeap[readingOffset + DA_HEADER_SIZE])
 			{
 				// 1つ前の領域と次の領域を紐付けることで、指定された領域を管理対象から外す
-				writeU32(daHeap, prevReadOffset, readU32(daHeap, readingOffset));
+				writeToHeapU32(prevReadOffset, readFromHeapU32(readingOffset));
 				break;
 			}
 			
 			prevReadOffset = readingOffset;
-			readingOffset = readU32(daHeap, readingOffset);
+			readingOffset = readFromHeapU32(readingOffset);
 		}
 	}
 }
@@ -169,18 +169,18 @@ extern void dataFree (void* ptr)
 #define BITOFFSET_2BYTE	16
 #define BITOFFSET_3BYTE	24
 
-static U32 readU32 (const unsigned char* bufferAddr, unsigned int offset)
+static U32 readFromHeapU32 (unsigned int offset)
 {
-	return ((U32)bufferAddr[offset]) |
-		   ((U32)bufferAddr[offset + 1] << BITOFFSET_1BYTE) |
-		   ((U32)bufferAddr[offset + 2] << BITOFFSET_2BYTE) |
-		   ((U32)bufferAddr[offset + 3] << BITOFFSET_3BYTE);
+	return ((U32)daHeap[offset]) |
+		   ((U32)daHeap[offset + 1] << BITOFFSET_1BYTE) |
+		   ((U32)daHeap[offset + 2] << BITOFFSET_2BYTE) |
+		   ((U32)daHeap[offset + 3] << BITOFFSET_3BYTE);
 }
 
-static void writeU32 (unsigned char* bufferAddr, unsigned int offset, U32 data)
+static void writeToHeapU32 (unsigned int offset, U32 data)
 {
-	bufferAddr[offset] = (unsigned char)(data & 0xFFU);
-	bufferAddr[offset + 1] = (unsigned char)((data >> BITOFFSET_1BYTE) & 0xFFU);
-	bufferAddr[offset + 2] = (unsigned char)((data >> BITOFFSET_2BYTE) & 0xFFU);
-	bufferAddr[offset + 3] = (unsigned char)((data >> BITOFFSET_3BYTE) & 0xFFU);
+	daHeap[offset] = (unsigned char)(data & 0xFFU);
+	daHeap[offset + 1] = (unsigned char)((data >> BITOFFSET_1BYTE) & 0xFFU);
+	daHeap[offset + 2] = (unsigned char)((data >> BITOFFSET_2BYTE) & 0xFFU);
+	daHeap[offset + 3] = (unsigned char)((data >> BITOFFSET_3BYTE) & 0xFFU);
 }
