@@ -5,7 +5,7 @@
 #endif
 
 #ifndef DA_ALIGNMENT
-#define DA_ALIGNMENT	4
+#define DA_ALIGNMENT	8
 #endif
 
 // 符号無し32bit(管理領域のパラメータ用)
