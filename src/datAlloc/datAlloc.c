@@ -121,7 +121,12 @@ extern void* dataMalloc (size_t size)
 	if (!hasData)
 	{
 		// 使用中の領域が1つも無かった場合、先頭ヘッダの次から割り当てる
-		candidateIndex = DA_HEADER_OFFSET_SIZE;
+		
+		// 使用中の領域が無いパターンではサイズチェックが走らないため、ここでヒープ代替領域に収まるかチェックする。
+		if (size <= (DA_HEAP_SIZE - DA_HEADER_OFFSET_SIZE - DA_HEADER_SIZE))
+		{
+			candidateIndex = DA_HEADER_OFFSET_SIZE;
+		}
 	}
 	if (candidateIndex != 0x00000000U)
 	{
